@@ -4,7 +4,7 @@ pipeline {
     triggers { pollSCM ('H/30 * * * *') }
     parameters {choice(name: 'MAVEN_GOAL', choices: ['package', 'install', 'clean'], description: 'Maven Goal')}
     stages {
-        stage('vcs') {
+        stage('vcs changed') {
             steps {
                 git url: 'https://github.com/khajadevopsmarch23/game-of-life.git',
                     branch: 'declarative'
