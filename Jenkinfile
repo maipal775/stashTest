@@ -1,0 +1,78 @@
+pipeline {
+    agent { label 'MAVEN_JDK8' }
+   /* triggers { cron ('H/15 * * * *') }  it is for 'Build periodically' option*/
+    triggers { pollSCM ('H/30 * * * *') }
+    parameters {choice(name: 'MAVEN_GOAL', choices: ['package', 'install', 'clean'], description: 'Maven Goal')}
+    stages {
+        stage('vcs') {
+            steps {
+                git url: 'https://github.com/khajadevopsmarch23/game-of-life.git',
+                    branch: 'declarative'
+            }
+        }
+        stage ('Artifactory configuration') {
+            steps {
+                rtServer (
+                    id: "ARTIFACTORY_SERVER",
+                    //Jfrog server url
+                    url: 'https://qtkhajamarch23.jfrog.io/artifactory',
+                    //credentails name provided in Jenkins while configutred the credentials in Manage jenkins => Manage credentials
+                    credentialsId: 'JFROG_CLOUD_ADMIN'
+                )
+
+                rtMavenDeployer (
+                    id: "MAVEN_DEPLOYER",
+                    serverId: "ARTIFACTORY_SERVER",
+                    // We get these value from DistributedManagement (pom.xml).
+                    releaseRepo: 'libs-release',
+                    // We get these value from DistributedManagement (pom.xml).
+                    snapshotRepo: 'libs-snapshot'
+                )
+
+                rtMavenResolver (
+                    id: "MAVEN_RESOLVER",
+                    serverId: "ARTIFACTORY_SERVER",
+                    releaseRepo: 'libs-release',
+                    snapshotRepo: 'libs-snapshot'
+                )
+            }
+        }
+        stage('package') {
+            tools {
+                jdk 'jdk_8_ubuntu'
+            }
+            steps {
+                 rtMavenRun (
+                    // tool name from Manage jenkins => Global tool configuration => Maven section => Add maven => Name
+                    tool: 'MAVEN_DEFAULT',
+                    pom: 'pom.xml',
+                    goals: 'clean install',
+                    // value from rtMavenDeployer 'id'
+                    deployerId: "MAVEN_DEPLOYER"
+
+                )
+                rtPublishBuildInfo (
+                    serverId: "ARTIFACTORY_SERVER"
+                )
+                //sh "mvn ${params.MAVEN_GOAL}"
+            }
+        }
+        stage('sonar') {
+            steps {
+                // have to provide sonar qube name
+                withSonarQubeEnv('SONAR_CLOUD') {
+                    sh 'mvn clean package sonar:sonar -Dsonar.organization=springpetclinic'
+
+              }
+            }
+        }
+        stage('post build') {
+            steps {
+                archiveArtifacts artifacts:  '**/target/gameoflife.war', onlyIfSuccessful: true
+                junit testResults: '**/surefire-reports/TEST-*.xml'
+            }
+
+        }
+    }
+
+}
